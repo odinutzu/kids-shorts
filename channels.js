@@ -209,5 +209,35 @@ var CHANNELS = [
 "en",
 "UC5vVe2R4ucoMzJP53o38Yaw",
 "The Wiggles"
+],
+[
+"en",
+"UC5XMF3Inoi8R9nSI8ChOsdQ",
+"Art for Kids Hub"
+],
+[
+"en",
+"UCjjRFKvjpU1L1eDmfBWcqig",
+"Red Ted Art"
+],
+[
+"en",
+"UC3hGM2kxOs8vRYCcvfH6vuw",
+"Mister Maker"
+],
+[
+"en",
+"UCow8r2F5tZVFQUM8vGiXswQ",
+"Crayola Create Kids"
+],
+[
+"en",
+"UC-biucJWhM8HwjsQ96uoIUw",
+"Cartooning Club How to Draw"
+],
+[
+"it",
+"UCHJML3tPqboUR3uzgK9lVAw",
+"Arte per Te"
 ]
 ];
