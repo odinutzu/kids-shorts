@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Kids Shorts</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kids Shorts">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none;
+               font-family: -apple-system, system-ui, sans-serif; color: #fff;
+               -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* The Short fills the phone; on a wide screen it stays a centred portrait column. */
+  #frame { position: fixed; top: 0; bottom: 0; left: 50%; height: 100dvh; width: min(100vw, calc(100dvh * 9 / 16));
+           transform: translateX(-50%); }
+  #player, #frame iframe { width: 100%; height: 100%; border: 0; }
+  /* Catches swipes and taps above the player, so YouTube's own controls and links stay out of reach. */
+  #touch { position: fixed; inset: 0; z-index: 2; }
+  #start { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center;
+           justify-content: center; gap: 22px; background: #000; }
+  #start button { width: 120px; height: 120px; border-radius: 50%; border: 0; background: #ff5c5c; cursor: pointer;
+                  box-shadow: 0 0 0 10px rgba(255,196,61,.35); }
+  #start button::after { content: ""; display: block; margin-left: 46px; border-style: solid;
+                         border-width: 26px 0 26px 42px; border-color: transparent transparent transparent #fff; }
+  #start p { margin: 0; font-size: 18px; opacity: .85; text-align: center; line-height: 1.6; }
+  #paused { position: fixed; left: 50%; top: 50%; z-index: 2; transform: translate(-50%, -50%); width: 90px;
+            height: 90px; border-radius: 50%; background: rgba(0,0,0,.55); display: none; pointer-events: none; }
+  #paused::before, #paused::after { content: ""; position: absolute; top: 26px; width: 12px; height: 38px;
+                                    background: #fff; border-radius: 3px; }
+  #paused::before { left: 29px; } #paused::after { right: 29px; }
+</style>
+</head>
+<body>
+<div id="frame"><div id="player"></div></div>
+<div id="touch"></div>
+<div id="paused"></div>
+<div id="start">
+  <button aria-label="Inizia"></button>
+  <p>Tocca per iniziare<br>⬆ Avanti &nbsp;·&nbsp; ⬇ Indietro &nbsp;·&nbsp; Tocco: pausa</p>
+</div>
+<script src="channels.js"></script>
+<script>
+  // CHANNELS (channels.js): [["it", "UC...", "Name"], ...]. Each channel's Shorts list is "UUSH" + ID without "UC".
+  var lists = CHANNELS.map(function (c) { return 'UUSH' + c[1].slice(2); });
+  var order = shuffle(lists.slice()), turn = -1;
+  var played = [], back = 0, recent = [], player = null, ready = false, started = false, isPaused = false;
+  var expecting = false, current = null;   // expecting: a Short we asked for is loading
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+
+  // Next channel in a shuffled round, at a random spot among its latest Shorts.
+  function next() {
+    if (back > 0) { back--; return playEntry(played[played.length - 1 - back]); }
+    turn = (turn + 1) % order.length;
+    if (turn === 0) order = shuffle(order);
+    var entry = { list: order[turn], index: Math.floor(Math.random() * 15) };
+    played.push(entry); if (played.length > 100) played.shift();
+    playEntry(entry);
+  }
+  function previous() {
+    if (back < played.length - 1) { back++; playEntry(played[played.length - 1 - back]); }
+  }
+  function playEntry(e) {
+    expecting = true;
+    isPaused = false; document.getElementById('paused').style.display = 'none';
+    player.loadPlaylist({ listType: 'playlist', list: e.list, index: e.index });
+  }
+  function togglePause() {
+    if (!player) return;
+    if (isPaused) { player.playVideo(); isPaused = false; } else { player.pauseVideo(); isPaused = true; }
+    document.getElementById('paused').style.display = isPaused ? 'block' : 'none';
+  }
+
+  // No subtitles: the player turns captions on by itself for some videos.
+  function noCaptions() {
+    try { player.setOption('captions', 'track', {}); } catch (e) {}
+    try { player.unloadModule('captions'); } catch (e) {}
+    try { player.unloadModule('cc'); } catch (e) {}
+  }
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, cc_load_policy: 0,
+                    playsinline: 1, origin: location.origin },
+      events: {
+        onReady: function () { ready = true; },
+        onStateChange: function (e) {
+          if (e.data === YT.PlayerState.PLAYING) {
+            noCaptions();
+            var now = (player.getVideoData() || {}).video_id;
+            // The playlist moved on by itself (a Short ended): take the next channel instead, so they take turns.
+            if (!expecting && current && now && now !== current) { next(); return; }
+            expecting = false; current = now;
+            // A Short seen in the last 40: move on (the same channel can come round again).
+            var id = (player.getVideoData() || {}).video_id;
+            if (id && back === 0) {
+              if (recent.indexOf(id) >= 0 && recent[recent.length - 1] !== id) { next(); return; }
+              if (recent[recent.length - 1] !== id) { recent.push(id); if (recent.length > 40) recent.shift(); }
+            }
+          }
+          // One Short per channel turn: when it ends, the next channel, instead of the playlist's next Short.
+          if (e.data === YT.PlayerState.ENDED) next();
+        },
+        // Removed, private or not allowed in other apps: skip it.
+        onError: function () { setTimeout(next, 400); }
+      }
+    });
+  }
+
+  // The first tap starts playback with sound (iPhones only allow sound after a tap).
+  document.querySelector('#start button').addEventListener('click', function () {
+    if (!ready) return;
+    started = true;
+    document.getElementById('start').style.display = 'none';
+    next();
+  });
+
+  // Swipe up: next. Swipe down: previous. Tap: pause.
+  var y0 = null, t0 = 0;
+  var touch = document.getElementById('touch');
+  touch.addEventListener('touchstart', function (e) { y0 = e.touches[0].clientY; t0 = Date.now(); }, { passive: true });
+  touch.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  touch.addEventListener('touchend', function (e) {
+    if (y0 === null || !started) return;
+    var dy = e.changedTouches[0].clientY - y0; y0 = null;
+    if (dy < -50) next(); else if (dy > 50) previous(); else if (Date.now() - t0 < 400) togglePause();
+  });
+  // Mouse and keys too, for testing on a computer.
+  touch.addEventListener('click', function () { if (started && !('ontouchstart' in window)) togglePause(); });
+  document.addEventListener('keydown', function (e) {
+    if (!started) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next();
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') previous();
+    if (e.key === ' ') togglePause();
+  });
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+</script>
+</body>
+</html>
